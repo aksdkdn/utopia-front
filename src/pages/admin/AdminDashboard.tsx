@@ -1,43 +1,124 @@
 import AdminHeader from './components/AdminHeader';
 import {
-  dashboardMemberStatsData,
   dashboardMetricsData,
-  dashboardSalesStatsData,
+  receiptsData,
+  reportsData,
+  settlementsData,
+  systemLogsData,
 } from './data/mockData';
 
-function SummaryList({
-  title,
-  subtitle,
-  rows,
+const HOURLY_TREND = [
+  { hour: '00', value: 1 },
+  { hour: '04', value: 3 },
+  { hour: '08', value: 5 },
+  { hour: '12', value: 4 },
+  { hour: '16', value: 6 },
+  { hour: '20', value: 2 },
+];
+
+function MetricCard({
+  label,
+  value,
+  helper,
 }: {
-  title: string;
-  subtitle: string;
-  rows: { label: string; value: string }[];
+  label: string;
+  value: string;
+  helper: string;
 }) {
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-        <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
-      </div>
-      <div className="space-y-3">
-        {rows.map((row) => (
-          <div
-            key={row.label}
-            className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-4 py-3"
-          >
-            <span className="text-sm text-gray-600">{row.label}</span>
-            <span className="text-sm font-semibold text-gray-900">
-              {row.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
+    <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <p className="text-sm font-medium text-gray-500">{label}</p>
+      <p className="mt-3 text-3xl font-bold tracking-tight text-gray-900">
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-gray-400">{helper}</p>
+    </article>
   );
 }
 
 export default function AdminDashboard() {
+  const todayReports = reportsData.filter(
+    (report) => report.status === '접수' || report.status === 'AI처리',
+  ).length;
+  const waitingSettlements = settlementsData.filter(
+    (settlement) => settlement.status === '대기',
+  ).length;
+  const waitingReceipts = receiptsData.filter(
+    (receipt) => receipt.status === '대기',
+  ).length;
+  const captchaFailures = systemLogsData.filter((log) =>
+    log.message.includes('캡챠'),
+  ).length;
+  const todaySignups =
+    dashboardMetricsData.find((metric) => metric.id === 'today')?.value ?? '+0';
+
+  const topMetrics = [
+    {
+      id: 'today-reports',
+      label: '오늘 신고',
+      value: `${todayReports}건`,
+      helper: '접수 + AI처리 상태 기준',
+    },
+    {
+      id: 'waiting-settlements',
+      label: '정산 대기',
+      value: `${waitingSettlements}건`,
+      helper: '승인 전 검토가 필요한 정산 건',
+    },
+    {
+      id: 'waiting-receipts',
+      label: '영수증 대기',
+      value: `${waitingReceipts}건`,
+      helper: 'OCR 확인 후 승인해야 하는 영수증',
+    },
+    {
+      id: 'captcha-failures',
+      label: '캡챠 실패',
+      value: `${captchaFailures}건`,
+      helper: '최근 운영 로그에 기록된 실패 건수',
+    },
+    {
+      id: 'today-signups',
+      label: '신규 가입',
+      value: todaySignups,
+      helper: '오늘 00:00 이후 가입 완료',
+    },
+  ];
+
+  const urgentItems = [
+    ...reportsData
+      .filter(
+        (report) => report.status === '접수' || report.status === 'AI처리',
+      )
+      .map((report) => ({
+        id: report.id,
+        type: '신고',
+        title: `${report.type} 신고 검토`,
+        target: report.target,
+        helper: `${report.reason} / ${report.createdAt}`,
+      })),
+    ...receiptsData
+      .filter((receipt) => receipt.status === '대기')
+      .map((receipt) => ({
+        id: receipt.id,
+        type: '영수증',
+        title: `${receipt.partyId} 영수증 승인`,
+        target: receipt.userId,
+        helper: `OCR ${receipt.ocrAmount.toLocaleString()}원 / ${receipt.createdAt}`,
+      })),
+    ...settlementsData
+      .filter((settlement) => settlement.status === '대기')
+      .map((settlement) => ({
+        id: settlement.id,
+        type: '정산',
+        title: `${settlement.partyId} 정산 검토`,
+        target: settlement.leaderId,
+        helper: `${settlement.billingMonth} / ${settlement.totalAmount.toLocaleString()}원`,
+      })),
+  ].slice(0, 6);
+
+  const maxTrend = Math.max(...HOURLY_TREND.map((item) => item.value), 1);
+
   return (
     <>
       <AdminHeader
@@ -49,59 +130,104 @@ export default function AdminDashboard() {
         }
       />
       <div className="p-6 md:p-8">
-        <div className="mx-auto max-w-6xl space-y-6">
+        <div className="mx-auto max-w-7xl space-y-6">
           <section>
             <h1 className="text-2xl font-bold text-gray-900">통계 대시보드</h1>
             <p className="mt-1 text-sm text-gray-500">
-              운영 지표와 승인 현황을 한 번에 확인하는 관리자 메인 화면입니다.
+              오늘 우선 처리해야 할 신고, 승인 대기, 장애성 이벤트만 빠르게 보는
+              운영형 대시보드입니다.
             </p>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {dashboardMetricsData.map((metric) => (
-              <article
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {topMetrics.map((metric) => (
+              <MetricCard
                 key={metric.id}
-                className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-              >
-                <p className="text-sm font-medium text-gray-500">
-                  {metric.label}
-                </p>
-                <p className="mt-3 text-3xl font-bold tracking-tight text-gray-900">
-                  {metric.value}
-                </p>
-                <p className="mt-2 text-xs text-gray-400">{metric.helper}</p>
-              </article>
+                label={metric.label}
+                value={metric.value}
+                helper={metric.helper}
+              />
             ))}
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-2">
-            <SummaryList
-              title="회원 통계(상태별)"
-              subtitle="활성/정지 상태를 빠르게 점검할 수 있습니다."
-              rows={dashboardMemberStatsData}
-            />
-            <SummaryList
-              title="매출/정산 통계(샘플)"
-              subtitle="승인, 대기, 거절 금액을 분리해 보여줍니다."
-              rows={dashboardSalesStatsData}
-            />
-          </section>
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
+            <article className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900">
+                    최근 24시간 추이
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    신고/승인/장애 이벤트가 몰리는 시간대를 빠르게 확인합니다.
+                  </p>
+                </div>
+                <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-500">
+                  6개 시점 요약
+                </span>
+              </div>
+              <div className="mt-6 flex h-64 items-end gap-4">
+                {HOURLY_TREND.map((item) => (
+                  <div
+                    key={item.hour}
+                    className="flex flex-1 flex-col items-center"
+                  >
+                    <div className="mb-2 text-xs font-semibold text-gray-500">
+                      {item.value}
+                    </div>
+                    <div className="flex h-48 w-full items-end rounded-2xl bg-gray-50 px-2 pb-2">
+                      <div
+                        className="w-full rounded-xl bg-blue-500"
+                        style={{
+                          height: `${Math.max((item.value / maxTrend) * 100, 14)}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="mt-3 text-xs text-gray-400">
+                      {item.hour}:00
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
 
-          <section className="rounded-2xl border border-dashed border-gray-300 bg-white/80 p-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">
-                  오늘 운영 체크 포인트
-                </h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  신고 접수와 정산 승인 대기 건을 우선 확인하면 운영 리스크를
-                  빠르게 줄일 수 있습니다.
-                </p>
+            <article className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900">
+                    긴급 처리 리스트
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    신고, 영수증, 정산 대기 건을 한 화면에서 우선순위로
+                    확인합니다.
+                  </p>
+                </div>
+                <span className="rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-600">
+                  즉시 확인
+                </span>
               </div>
-              <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                접수 신고 7건 / 정산 대기 3건 / 실시간 가입 +12
+              <div className="mt-5 space-y-3">
+                {urgentItems.map((item) => (
+                  <div
+                    key={`${item.type}-${item.id}`}
+                    className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {item.title}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {item.target} · {item.helper}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600">
+                        {item.type}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            </article>
           </section>
         </div>
       </div>
